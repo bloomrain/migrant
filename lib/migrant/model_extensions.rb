@@ -1,13 +1,27 @@
 module Migrant
   module ModelExtensions
     attr_accessor :schema
-    
+
     def belongs_to(*args)
       super
       create_migrant_schema
       @schema.add_association(self.reflect_on_association(args.first))
     end
-        
+
+    def has_attached_file(*args)
+      super if defined?(super)
+      attachment_name = args.first
+      migrant_schema.add_field("#{attachment_name}_file_name", :string)
+      migrant_schema.add_field("#{attachment_name}_content_type", :string)
+      migrant_schema.add_field("#{attachment_name}_file_size", :integer)
+      migrant_schema.add_field("#{attachment_name}_updated_at", :datetime)
+    end
+
+    def migrant_schema
+      create_migrant_schema
+      @schema
+    end
+
     def create_migrant_schema
       if self.superclass == ActiveRecord::Base
        @schema ||= Schema.new
@@ -15,7 +29,7 @@ module Migrant
         @schema ||= InheritedSchema.new(self.superclass.schema)
       end
     end
-    
+
     def structure(type=nil, &block)
       # Using instance_*evil* to get the neater DSL on the models.
       # So, my_field in the structure block actually calls Migrant::Schema.my_field
@@ -52,19 +66,19 @@ module Migrant
     def no_structure
       structure {}
     end
-    
+
     def reset_structure!
       @schema = nil
     end
 
     def mock(attributes={}, recursive=true)
       raise NoStructureDefined.new("In order to mock() #{self.to_s}, you need to define a Migrant structure block") unless @schema
- 
+
       attribs = {}
       attribs.merge!(self.superclass.mock_attributes(attributes, recursive)) unless self.superclass == ActiveRecord::Base
       new attribs.merge(mock_attributes(attributes, recursive))
     end
-    
+
     def mock_attributes(attributes={}, recursive=true)
       attribs = @schema.columns.collect { |name, data_type| [name, data_type.mock] }.flatten(1)
 
@@ -78,7 +92,7 @@ module Migrant
       end
       Hash[*attribs].merge(attributes)
     end
-    
+
     def mock!(attributes={}, recursive=true)
       mock(attributes, recursive).tap do |mock|
         mock.save!
@@ -88,4 +102,3 @@ module Migrant
 
   class NoStructureDefined < Exception; end;
 end
-
